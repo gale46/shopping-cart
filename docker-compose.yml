@@ -1,0 +1,113 @@
+version: "3.8"
+services:
+  # Master 1
+  redis-1:
+    image: redis:8.0
+    container_name: redis-1
+    ports: ["6371:6379", "16371:16379"]
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --appendonly yes
+    #cluster -enablez分配slot
+    #config紀錄node master,slave
+    #timeout 5000超過時間，認定為損壞開始轉移資料
+    #AOF (Append Only File) redis 操作的logfile
+    networks: [redis-net]
+
+  # Master 2
+  redis-2:
+    image: redis:8.0
+    container_name: redis-2
+    ports: ["6372:6379", "16372:16379"]
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --appendonly yes
+    networks: [redis-net]
+
+  # Master 3
+  redis-3:
+    image: redis:8.0
+    container_name: redis-3
+    ports: ["6373:6379", "16373:16379"]
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --appendonly yes
+    networks: [redis-net]
+
+  # Slave 1
+  redis-4:
+    image: redis:8.0
+    container_name: redis-4
+    ports: ["6374:6379", "16374:16379"]
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --appendonly yes
+    networks: [redis-net]
+
+  # Slave 2
+  redis-5:
+    image: redis:8.0
+    container_name: redis-5
+    ports: ["6375:6379", "16375:16379"]
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --appendonly yes
+    networks: [redis-net]
+
+  # Slave 3
+  redis-6:
+    image: redis:8.0
+    container_name: redis-6
+    ports: ["6376:6379", "16376:16379"]
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --appendonly yes
+    networks: [redis-net]
+  
+  api:
+      build: ./api
+      networks:
+        - app-net      # 與前端通訊
+        - redis-net    # 與 Redis 集群通訊
+      depends_on:
+        - redis-1      # 這裡要指定具體的服務名，不能只寫 redis
+        - redis-2
+        - redis-3
+        - db
+      ports:
+        - "8080:8080"
+      container_name: "api"
+      
+
+
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    networks:
+      - app-net
+
+
+
+
+
+  db:
+    image: mysql:8.0         # 這裡要跟你原本 pull 的版本一致
+    container_name: mysql-db  # 這是 Compose 建立的新名字
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: 9151999  # 填入你原本設的密碼
+      MYSQL_DATABASE: ShoppingCart        # 你原本用的資料庫
+    ports:
+      - "3306:3306"
+    networks:
+      - app-net
+    volumes:
+      - mysql-data:/var/lib/mysql        # 讓資料持久化
+
+volumes:
+  mysql-data:                # 定義一個具名的 volume
+
+networks:
+  redis-net:
+    driver: bridge
+  app-net:    
+    driver: bridge
+
+
+
+
+#redis互相溝通方式，只能透過port mapping 才能進，確保database 安全性
+
+
+
+
