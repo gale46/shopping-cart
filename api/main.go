@@ -45,7 +45,7 @@ func main() {
 func getUserInfo(Username string) (dbId int, dbPpassword string) {
 	const (
 		User     = "root"
-		Password = "9151999"
+		Password = ""
 		Host     = "mysql-db" // container_name(server)
 		Port     = 3306
 		DBName   = "ShoppingCart" //MYSQL_DATABASE
