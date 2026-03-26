@@ -71,6 +71,8 @@ services:
 
   frontend:
     build: ./frontend
+    volumes:
+      - ./api/uploads:/var/www/html/uploads
     ports:
       - "3000:80"
     networks:

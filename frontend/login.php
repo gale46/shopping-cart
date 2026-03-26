@@ -29,8 +29,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $response = curl_exec($ch);
 
     curl_close($ch);
-    
-    echo "<script>alert('" . addslashes($response) . "');</script>";
+    //將response存入cache讓下個頁面可以讀到
+    $res = json_decode($response, true);
+    if($res['message'] === "登入成功"){
+        session_start();
+        $_SESSION['iser_id'] = $res['id'];
+        header("Location:index.php");
+    }
+    echo "<div style='font-family: Arial, sans-serif; font-size: 20px; font-weight: bold;'>
+        $response
+      </div>";
 }
 
 
@@ -39,7 +47,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
 <!DOCTYPE html>
     <html>
-    <head>
+    <head>  
         <title>登入</title>
     </head>
     <style>

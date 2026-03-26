@@ -17,35 +17,12 @@ type LoginRequest struct {
 func main() {
 	//初始化
 	r := gin.Default()
-	//登入時使用LoginRequest結構
-
 	r.GET("/", func(c *gin.Context) {
 		c.String(200, "Hello from shopping-cart API")
 	})
-
-	//建立登入路由
-	r.POST("/login", func(c *gin.Context) {
-		var req LoginRequest
-		c.ShouldBindJSON(&req)
-		//對比撈出的username 和 pw
-		dbId, dbPassword := getUserInfo(req.Username)
-
-		if err := c.ShouldBindJSON(&req); err != nil && req.Password == dbPassword {
-			c.JSON(200, gin.H{"message": "登入成功", "id": dbId})
-		} else {
-			c.JSON(200, gin.H{"message": "登入失敗"})
-		}
-	})
-	r.GET("/login", func(c *gin.Context) {
-		c.String(200, "Hello from shopping-cart API")
-	})
-
-	r.Run(":8080")
-}
-func getUserInfo(Username string) (dbId int, dbPpassword string) {
 	const (
 		User     = "root"
-		Password = "9151999"
+		Password = ""
 		Host     = "mysql-db" // container_name(server)
 		Port     = 3306
 		DBName   = "ShoppingCart" //MYSQL_DATABASE
@@ -65,14 +42,41 @@ func getUserInfo(Username string) (dbId int, dbPpassword string) {
 
 	fmt.Println("MySQL 連線成功！")
 
-	//由username找id + pw
-	// |----------------|
-	// |----------------|
+	login(r, db)
+
+	//讀取商品資訊
+	getProduct(r, db)
+
+	r.Run(":8080")
+}
+
+func login(r *gin.Engine, db *sql.DB) {
+	//建立登入路由
+	r.POST("/login", func(c *gin.Context) {
+		var req LoginRequest
+		//登入時使用LoginRequest結構
+		c.ShouldBindJSON(&req)
+		//對比撈出的username 和 pw
+		dbId, dbPassword := getUserInfo(req.Username, db)
+
+		if err := c.ShouldBindJSON(&req); err != nil && req.Password == dbPassword {
+			c.JSON(200, gin.H{"message": "登入成功", "id": dbId})
+		} else {
+			c.JSON(200, gin.H{"message": "登入失敗"})
+		}
+	})
+	r.GET("/login", func(c *gin.Context) {
+		c.String(200, "Hello from shopping-cart API")
+	})
+}
+
+func getUserInfo(Username string, db *sql.DB) (dbId int, dbPpassword string) {
+
 	var dbPassword string
 	row := db.QueryRow("SELECT id, password FROM users WHERE username = ?", Username)
-	err = row.Scan(&dbId, &dbPassword)
+	err := row.Scan(&dbId, &dbPassword)
 
-	// 3. 處理錯誤（這步最重要）
+	// 處理錯誤
 	if err == sql.ErrNoRows {
 		fmt.Println("找不到該使用者")
 		return 0, ""
@@ -83,4 +87,39 @@ func getUserInfo(Username string) (dbId int, dbPpassword string) {
 
 	return dbId, dbPassword //查詢後的id + pw
 
+}
+
+func getProduct(r *gin.Engine, db *sql.DB) {
+	// r.Static("網路路徑", "實體路徑")
+	r.Static("/uploads", "/home/ubuntu/shopping-cart/api/uploads")
+
+	r.GET("/products", func(c *gin.Context) {
+		// 前 10 筆
+		rows, err := db.Query("SELECT id, name, price, image_url FROM product LIMIT 10")
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+		defer rows.Close()
+
+		var products []gin.H // 建立一個存放多個商品的陣列
+		imageBaseUrl := "http://localhost:3000/uploads/product/"
+
+		for rows.Next() {
+			var name, imageUrl string
+			var id, price int
+			rows.Scan(&id, &name, &price, &imageUrl)
+
+			// 拼接網址並存入陣列
+			products = append(products, gin.H{
+				"id":        id,
+				"name":      name,
+				"price":     price,
+				"image_url": fmt.Sprintf("%s%s", imageBaseUrl, imageUrl),
+			})
+		}
+
+		// 直接回傳整個陣列
+		c.JSON(200, products)
+	})
 }
