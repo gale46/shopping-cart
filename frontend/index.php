@@ -24,7 +24,9 @@ $products = json_decode($json, true);
 
                 <div class="image-box">
                     <?php if (!empty($item['image_url'])): ?>
-                        <img src="<?= htmlspecialchars($item['image_url']) ?>" alt="商品圖片">
+                        <a href="product_detail.php?id=<?php echo $item['id']; ?>">
+                            <img src="<?php echo $item['image_url']; ?>" alt="<?php echo $item['name']; ?>" style="width:200px;">
+                        </a>
                     <?php else: ?>
                         <p class="no-image">目前沒有圖片</p>
                     <?php endif; ?>

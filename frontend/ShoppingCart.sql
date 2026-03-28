@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS product(
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP NULL
 );
-insert into product(name, price,seller_id) value("面紙", 50, 1);
+insert into product(name, price,seller_id) value("apple", 50, 1);
 DELETE FROM seller WHERE id = 1;
 
 
@@ -47,3 +47,19 @@ CREATE TABLE IF NOT EXISTS seller(
 );
 
 insert into seller(name) value("seller1");
+
+
+CREATE TABLE IF NOT EXISTS cart_item(
+    id INT PRIMARY KEY AUTO_INCREMENT,
+	user_id INT NOT NULL,
+    product_id INT NOT NULL,
+    -- 產品id
+
+    -- quantity
+    quantity INT NOT NULL DEFAULT 1, 
+    FOREIGN KEY(user_id) REFERENCES users(id),
+    FOREIGN KEY(product_id) REFERENCES product(id)
+	
+);
+insert into cart_item(user_id, product_id) value (1, 5);
+

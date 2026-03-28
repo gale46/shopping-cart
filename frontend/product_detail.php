@@ -7,12 +7,14 @@
 
     echo "DEBUG: 開始執行<br>";
     var_dump($_POST); // 看看表單傳了什麼
-    $addToCart = "http://api:8080/cart"; 
+    $addToCart = "http://api:8080/product_detail"; 
     //需定義type以免傳到go後錯誤
     $data = json_encode([
-        "id" => (int)$_POST['id'] ?? 0,
-        "quantity" => (int)$_POST['quantity'] ?? 0
-
+        "id" => (int)$_GET['id'] ?? 0
+        // 加上user_id + quantity
+        // |-----------------------------------------|
+        // |-----------------------------------------|
+        // go 加入cart_item sql
     ]);
     $ch = curl_init($addToCart);
     curl_setopt($ch, CURLOPT_POST, true);
@@ -30,10 +32,12 @@
     // 只要 $res 不是 null 且有 name 這個 key，就代表成功了
     // 修正庫存描述至不同頁面
     if ($res !== null && isset($res['name'])) {
-        echo "<h3>加入購物車成功！</h3>";
+        echo '<img src="' . $res['image_url'] . '"/>';
         echo "商品名稱：" . $res['name'] . "<br>";
         echo "價格：" . $res['price'] . "<br>";
-        echo "數量：" . $res['quantity'] . "<br>";
+        echo "庫存：" . $res['stock'] . "<br>";
+        echo "描述：" . $res['description'] . "<br>";
+        echo "賣家資訊：" . $res['seller_name'] . "<br>". $res['seller_email'] . "<br>";
     } else {
         echo "解析失敗，回傳內容為：";
         var_dump($res);
@@ -41,3 +45,4 @@
     
 
 ?>
+

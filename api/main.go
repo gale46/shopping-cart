@@ -14,6 +14,11 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
+type productRequest struct {
+	Id int `json:"id"`
+	Quantity int `json:"quantity"`
+}
+
 func main() {
 	//初始化
 	r := gin.Default()
@@ -47,9 +52,12 @@ func main() {
 	//讀取商品資訊
 	getProduct(r, db)
 
+	getCartProduct(r, db)
+
 	r.Run(":8080")
 }
 
+// php to go
 func login(r *gin.Engine, db *sql.DB) {
 	//建立登入路由
 	r.POST("/login", func(c *gin.Context) {
@@ -89,6 +97,7 @@ func getUserInfo(Username string, db *sql.DB) (dbId int, dbPpassword string) {
 
 }
 
+// go to php
 func getProduct(r *gin.Engine, db *sql.DB) {
 	// r.Static("網路路徑", "實體路徑")
 	r.Static("/uploads", "/home/ubuntu/shopping-cart/api/uploads")
@@ -122,4 +131,102 @@ func getProduct(r *gin.Engine, db *sql.DB) {
 		// 直接回傳整個陣列
 		c.JSON(200, products)
 	})
+}
+
+func getCartProduct(r *gin.Engine, db *sql.DB) {
+	r.POST("/cart", func(c *gin.Context) {
+		var req productRequest
+		var productInfo gin.H
+		
+		var name, description, seller_name, seller_email string
+		var price, stock, seller_id, user_id , product_id , quantity int
+		
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid request body"})
+			return
+		}
+
+		// 預設user = 1
+		row := db.Query("SELECT * FROM cart_item WHERE user_id = ?", 1)
+		if err := row.Scan(&user_id , &product_id , &quantity); err != nil{
+			c.json(500, gin.H{"error": "fetch cart_item info"})
+			return
+		}
+		//處理array
+		// |-----------------------------------------|
+		// |-----------------------------------------|
+
+		//因cart_item提出同一個user會有多個product_id
+		// 需要先處理每個array
+		row := db.Query("SELECT name, price, image_url FROM product WHERE id = ?", product_id)
+		if err := row.Scan(&name, &price, &image_url); err != nil{
+			c.json(500, gin.H{"error": "fetch product info"})
+			return
+		}
+
+		// 加上判斷式
+		// 判斷為加入購物車或是單純查看購物車
+		if (req.Id != 0 && req.Quantity != 0){
+			// 此為加入購物車
+
+
+			//存入cart_item資訊
+			// |-----------------------------------------|
+			// |-----------------------------------------|
+
+		
+
+		}
+		productInfo = gin.H{
+			"name":        name,
+			"price":       price,
+			"quantity": quantity,
+		}
+		c.JSON(200, productInfo)
+
+	})
+
+
+
+	r.POST("/product_detail", func(c *gin.Context) {
+		var req productRequest
+		var productInfo gin.H
+		var name, description, image_url, seller_name, seller_email string
+		var price, stock, seller_id int
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid request body"})
+			return
+		}
+
+		if req.Id == 0 {
+			c.JSON(400, gin.H{"error": "request fail"})
+			return
+		}
+		row := db.QueryRow("SELECT name, description, price, image_url, stock, seller_id FROM product WHERE id = ?", req.Id)
+		if err := row.Scan(&name, &description, &price, &image_url, &stock, &seller_id); err != nil{
+			c.json(500, gin.H{"error":"fetch product info"})
+			return
+		}
+
+		row_seller := db.QueryRow("SELECT seller_name, seller_email FROM seller WHERE id = ?", seller_id)
+		if err := row_seller.Scan(&seller_name, &seller_email);err != nil{
+			c.json(500, gin.H{"error":"fetch seller info"})
+			return
+		}
+
+		imageBaseUrl := "http://localhost:3000/uploads/product/"
+
+		productInfo = gin.H{
+			"name":        name,
+			"price":       price,
+			"stock":       stock,
+			"image_url": 	fmt.Sprintf("%s%s", imageBaseUrl, image_url),
+			"description": description,
+			"seller_name":  seller_name,
+			"seller_email": seller_email,
+		}
+		c.JSON(200, productInfo)
+
+	})
+
 }
