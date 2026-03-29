@@ -31,13 +31,16 @@
     // 加入由cart_item提出的quantity
     // 只要 $res 不是 null 且有 name 這個 key，就代表成功了
     // 修正庫存描述至不同頁面
-    if ($res !== null && isset($res['name'])) {
+    if (is_array($res) && !empty($res)) {
+        // 使用 foreach 遍歷這個商品陣列
+        foreach ($res as $item) {
         echo '<img src="' . $res['image_url'] . '"/>';
         echo "商品名稱：" . $res['name'] . "<br>";
         echo "價格：" . $res['price'] . "<br>";
         echo "庫存：" . $res['stock'] . "<br>";
         echo "描述：" . $res['description'] . "<br>";
         echo "賣家資訊：" . $res['seller_name'] . "<br>". $res['seller_email'] . "<br>";
+        }
     } else {
         echo "解析失敗，回傳內容為：";
         var_dump($res);

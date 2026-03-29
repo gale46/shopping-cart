@@ -28,12 +28,16 @@
     // |-----------------------------------------|
     // 加入由cart_item提出的quantity
     // 只要 $res 不是 null 且有 name 這個 key，就代表成功了
-    // 修正庫存描述至不同頁面
-    if ($res !== null && isset($res['name'])) {
-        echo "<h3>加入購物車成功！</h3>";
-        echo "商品名稱：" . $res['name'] . "<br>";
-        echo "價格：" . $res['price'] . "<br>";
-        echo "數量：" . $res['quantity'] . "<br>";
+    if (is_array($res) && !empty($res)) {
+        // 使用 foreach 遍歷這個商品陣列
+        foreach ($res as $item) {
+            echo "<h3>加入購物車成功！</h3>";
+            echo '<img src="' . $item['image_url'] . '"/>';
+            echo "商品名稱：" . $item['name'] . "<br>";
+            echo "價格：" . $item['price'] . "<br>";
+            echo "數量：" . $item['quantity'] . "<br>";
+
+        }
     } else {
         echo "解析失敗，回傳內容為：";
         var_dump($res);

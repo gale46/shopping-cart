@@ -27,7 +27,7 @@ func main() {
 	})
 	const (
 		User     = "root"
-		Password = ""
+		Password = "9151999"
 		Host     = "mysql-db" // container_name(server)
 		Port     = 3306
 		DBName   = "ShoppingCart" //MYSQL_DATABASE
@@ -63,11 +63,14 @@ func login(r *gin.Engine, db *sql.DB) {
 	r.POST("/login", func(c *gin.Context) {
 		var req LoginRequest
 		//登入時使用LoginRequest結構
-		c.ShouldBindJSON(&req)
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"message": "請提供正確的登入資訊"})
+			return
+		}
 		//對比撈出的username 和 pw
 		dbId, dbPassword := getUserInfo(req.Username, db)
 
-		if err := c.ShouldBindJSON(&req); err != nil && req.Password == dbPassword {
+		if req.Password == dbPassword && dbId != 0 {
 			c.JSON(200, gin.H{"message": "登入成功", "id": dbId})
 		} else {
 			c.JSON(200, gin.H{"message": "登入失敗"})
@@ -78,9 +81,8 @@ func login(r *gin.Engine, db *sql.DB) {
 	})
 }
 
-func getUserInfo(Username string, db *sql.DB) (dbId int, dbPpassword string) {
+func getUserInfo(Username string, db *sql.DB) (dbId int, dbPassword string) {
 
-	var dbPassword string
 	row := db.QueryRow("SELECT id, password FROM users WHERE username = ?", Username)
 	err := row.Scan(&dbId, &dbPassword)
 
@@ -117,7 +119,10 @@ func getProduct(r *gin.Engine, db *sql.DB) {
 		for rows.Next() {
 			var name, imageUrl string
 			var id, price int
-			rows.Scan(&id, &name, &price, &imageUrl)
+			if err := rows.Scan(&id, &name, &price, &imageUrl); err != nil {
+				c.JSON(500, gin.H{"error": "fetch product scan error"})
+				return
+			}
 
 			// 拼接網址並存入陣列
 			products = append(products, gin.H{
@@ -136,51 +141,75 @@ func getProduct(r *gin.Engine, db *sql.DB) {
 func getCartProduct(r *gin.Engine, db *sql.DB) {
 	r.POST("/cart", func(c *gin.Context) {
 		var req productRequest
-		var productInfo gin.H
-		
-		var name, description, seller_name, seller_email string
-		var price, stock, seller_id, user_id , product_id , quantity int
+		var productInfo []gin.H
+		imageBaseUrl := "http://localhost:3000/uploads/product/"
+
+		var user_id , product_id , quantity int
 		
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, gin.H{"error": "Invalid request body"})
 			return
 		}
 
-		// 預設user = 1
-		row := db.Query("SELECT * FROM cart_item WHERE user_id = ?", 1)
-		if err := row.Scan(&user_id , &product_id , &quantity); err != nil{
-			c.json(500, gin.H{"error": "fetch cart_item info"})
-			return
-		}
-		//處理array
-		// |-----------------------------------------|
-		// |-----------------------------------------|
 
-		//因cart_item提出同一個user會有多個product_id
-		// 需要先處理每個array
-		row := db.Query("SELECT name, price, image_url FROM product WHERE id = ?", product_id)
-		if err := row.Scan(&name, &price, &image_url); err != nil{
-			c.json(500, gin.H{"error": "fetch product info"})
-			return
-		}
+
+
 
 		// 加上判斷式
 		// 判斷為加入購物車或是單純查看購物車
+		//存入cart_item資訊
+		// update 使用 user_id, product_id更新Quantity
 		if (req.Id != 0 && req.Quantity != 0){
-			// 此為加入購物車
-
-
-			//存入cart_item資訊
+			rows, err := db.Query("SELECT * FROM cart_item WHERE user_id = ?", 1)
+			if err != nil{
+				c.JSON(500, gin.H{"error": "fetch cart_item info"})
+				return
+			}
+			//因cart_item提出同一個user會有多個product_id
+			for rows.Next() {
+				rows.Scan(&user_id , &product_id , &quantity);
+				//依照每個user的cart_item
+				// 尋找加入購物車的product
+				//todo
+			// |-----------------------------------------|目前是update web回傳沒有加上原先的
 			// |-----------------------------------------|
-			// |-----------------------------------------|
-
-		
+				_, err := db.Exec("UPDATE cart_item SET quantity = ? WHERE product_id = ? AND user_id = ?", quantity, product_id, user_id)
+				if err != nil {
+					c.JSON(500, gin.H{"error": "failed to update cart_item"})
+					return
+				}
+			}
+			
 
 		}
-		productInfo = gin.H{
-			"name":        name,
-			"price":       price,
-			"quantity": quantity,
+
+		// 更新完Quantity or 單純查看，提出資料並傳給web
+		// 預設user = 1
+		rows, err := db.Query("SELECT user_id , product_id , quantity FROM cart_item WHERE user_id = ?", 1)
+		if err != nil{
+			c.JSON(500, gin.H{"error": "fetch cart_item info"})
+			return
+		}
+		//因cart_item提出同一個user會有多個product_id
+		// 需要先處理每個array
+		for rows.Next() {
+			rows.Scan(&user_id , &product_id , &quantity);
+			//依照每個user的cart_item
+			// 尋找加入購物車的product
+		var name, imageUrl string
+		var price int
+		err := db.QueryRow("SELECT name, price, image_url FROM product WHERE id = ?", product_id).Scan(&name, &price, &imageUrl)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "fetch product info"})
+			return
+		}
+
+		productInfo = append(productInfo, gin.H{
+			"name":      name,
+			"price":     price,
+			"quantity":  quantity,
+			"image_url": fmt.Sprintf("%s%s", imageBaseUrl, imageUrl),
+		})
 		}
 		c.JSON(200, productInfo)
 
@@ -204,19 +233,19 @@ func getCartProduct(r *gin.Engine, db *sql.DB) {
 		}
 		row := db.QueryRow("SELECT name, description, price, image_url, stock, seller_id FROM product WHERE id = ?", req.Id)
 		if err := row.Scan(&name, &description, &price, &image_url, &stock, &seller_id); err != nil{
-			c.json(500, gin.H{"error":"fetch product info"})
+			c.JSON(500, gin.H{"error":"fetch product info"})
 			return
 		}
 
-		row_seller := db.QueryRow("SELECT seller_name, seller_email FROM seller WHERE id = ?", seller_id)
+		row_seller := db.QueryRow("SELECT name, email FROM seller WHERE id = ?", seller_id)
 		if err := row_seller.Scan(&seller_name, &seller_email);err != nil{
-			c.json(500, gin.H{"error":"fetch seller info"})
+			c.JSON(500, gin.H{"error":"fetch seller info"})
 			return
 		}
 
 		imageBaseUrl := "http://localhost:3000/uploads/product/"
 
-		productInfo = gin.H{
+		productInfo = gin.H{	
 			"name":        name,
 			"price":       price,
 			"stock":       stock,
