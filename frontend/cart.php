@@ -1,47 +1,130 @@
-
-
-
 <?php
-    error_reporting(E_ALL);
-    ini_set('display_errors', 1);
+$data = json_encode([
+    "product_id" => isset($_POST['product_id']) ? (int)$_POST['product_id'] : 0,
+    "quantity" => isset($_POST['quantity']) ? (int)$_POST['quantity'] : 0
+]);
 
-    echo "DEBUG: 開始執行<br>";
-    var_dump($_POST); // 看看表單傳了什麼
-    $addToCart = "http://api:8080/cart"; 
-    //需定義type以免傳到go後錯誤
-    $data = json_encode([
-        "id" => (int)$_POST['id'] ?? 0,
-        "quantity" => (int)$_POST['quantity'] ?? 0
+$addToCartUrl = "http://api:8080/cart"; 
+$ch = curl_init($addToCartUrl);
+curl_setopt($ch, CURLOPT_POST, true);
+curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 
-    ]);
-    $ch = curl_init($addToCart);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    $response = curl_exec($ch);
-    curl_close($ch);
-    echo "這是 Go 傳回來的原始文字：[" . $response . "]";
-    // 1. 先把文字變成 PHP 陣列
-   $res = json_decode($response, true);
-    // |-----------------------------------------|
-    // |-----------------------------------------|
-    // 加入由cart_item提出的quantity
-    // 只要 $res 不是 null 且有 name 這個 key，就代表成功了
-    if (is_array($res) && !empty($res)) {
-        // 使用 foreach 遍歷這個商品陣列
-        foreach ($res as $item) {
-            echo "<h3>加入購物車成功！</h3>";
-            echo '<img src="' . $item['image_url'] . '"/>';
-            echo "商品名稱：" . $item['name'] . "<br>";
-            echo "價格：" . $item['price'] . "<br>";
-            echo "數量：" . $item['quantity'] . "<br>";
+$response = curl_exec($ch);
+curl_close($ch);
 
-        }
-    } else {
-        echo "解析失敗，回傳內容為：";
-        var_dump($res);
-    }
-    
-
+// 將 Go 傳回來的 JSON 轉成 PHP 陣列
+$res = json_decode($response, true);
+echo "<pre>"; 
+var_dump($res); // 查看參數
+echo "</pre>"; 
 ?>
+
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>加入購物車結果</title>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; padding: 20px; background-color: #f4f4f4; }
+        .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .success-title { color: #28a745; border-bottom: 2px solid #28a745; padding-bottom: 10px; }
+        .error-title { color: #dc3545; }
+        .product-card { display: flex; align-items: center; gap: 20px; margin-top: 20px; }
+        .product-card img { width: 120px; height: auto; border-radius: 5px; border: 1px solid #ddd; }
+        .product-info b { color: #555; }
+        .btn-back { display: inline-block; margin-top: 20px; padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <?php if (is_array($res) && !empty($res)): ?>
+        <h2 class="success-title">✅ 加入購物車成功！</h2>
+        
+        <?php 
+
+        foreach ($res as $item): 
+        ?>
+            <div class="product-card">
+                <div class="product-image">
+                    <?php if (!empty($item['image_url'])): ?>
+                        <a herf = 'product_detail.php'>
+                            <img src="<?= htmlspecialchars($item['image_url']) ?>" alt="商品圖片">
+                        </a>
+                    <?php else: ?>
+                        <div style="width:120px;height:120px;background:#eee;display:flex;align-items:center;justify-content:center;">無圖片</div>
+                    <?php endif; ?>
+                </div>
+                
+                <div class="product-info">
+                    <p><b>商品名稱：</b><?= htmlspecialchars($item['name']) ?></p>
+                    <p><b>價格：</b><span style="color:red;">$<?= number_format($item['price']) ?></span></p>
+                    <p>
+                        <b>購買數量：</b>
+                        <!--使用qty_+id作為input的id -->
+                        <input type="number" 
+                        
+                            id="qty_<?= $item['product_id'] ?>" 
+                            value="<?= (int)$item['quantity'] ?>" 
+                            min="0"
+                            oninput="if(this.value<0)this.value=0"
+                            onchange="updateCart(<?= $item['product_id']?>)">
+                            <!-- onchange->改變事件; onclick->點擊事件 -->
+                            <!-- 利用JS fetch sql data -->
+                    </p>
+                    
+                </div>
+            </div>
+        <?php endforeach; ?>    
+
+    <?php else: ?>
+        <h2 class="error-title">解析失敗或購物車為空</h2>
+        <p>後端回傳原始內容：</p>
+        <pre style="background: #eee; padding: 10px;"><?php var_dump($res); ?></pre>
+    <?php endif; ?>
+    <h5 updateSubtotal(productId, price)></h5>
+    <hr>
+    <a href="index.php" class="btn-back">返回商品列表</a>
+    <!-- todo -->
+    <a href="index.php" class="btn-back">結帳</a>
+</div>
+<script>
+    async function updateCart(productId) {
+        // 透過 ID 抓取「目前」輸入框裡的最新數值
+        const qtyInput = document.getElementById('qty_' + productId);
+        const newQuantity = parseInt(qtyInput.value);
+
+        // 測試列印
+        console.log("商品 ID:", productId, "新數量:", newQuantity);
+
+        // await 採用async在fetch的同時，可以處理別的畫面
+        try{
+            const response = await fetch('http://localhost:8080/cart_update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    product_id: productId,
+                    quantity: newQuantity
+                })
+            });
+
+        }catch(error){
+            console.error("更新失敗:", error);
+        }
+
+    }; 
+    function updateSubtotal(productId, price) {
+    const qtyInput = document.getElementById('qty_' + productId);
+    const subtotalElement = document.getElementById('subtotal_' + productId);
+    
+    const quantity = parseInt(qtyInput.value) || 0;
+    const total = price * quantity;
+
+    // 更新畫面上的小計
+    subtotalElement.innerText = '$' + total.toLocaleString(); // toLocaleString 會加上千分位
+}
+</script>
+</body>
+</html>

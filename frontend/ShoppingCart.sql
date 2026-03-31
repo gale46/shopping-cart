@@ -63,3 +63,20 @@ CREATE TABLE IF NOT EXISTS cart_item(
 );
 insert into cart_item(user_id, product_id) value (1, 5);
 
+
+CREATE TABLE IF NOT EXISTS orders(
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id int NOT NULL,
+    total_price int,
+    product_status int,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP 
+);
+
+CREATE TABLE IF NOT EXISTS order_item(
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    order_id int NOT NULL,
+    product_id int,
+    buy_price int,
+    quantity int,
+    FOREIGN KEY (order_id) REFERENCES orders(id)
+);
