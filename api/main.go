@@ -4,9 +4,9 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
-
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/gin-contrib/cors"
 )
 
 type LoginRequest struct {
@@ -15,7 +15,7 @@ type LoginRequest struct {
 }
 
 type productRequest struct {
-	Id int `json:"id"`
+	Id int `json:"product_id"`
 	Quantity int `json:"quantity"`
 }
 
@@ -46,7 +46,7 @@ func main() {
 	}
 
 	fmt.Println("MySQL 連線成功！")
-
+	r.Use(cors.Default())
 	login(r, db)
 
 	//讀取商品資訊
@@ -118,15 +118,15 @@ func getProduct(r *gin.Engine, db *sql.DB) {
 
 		for rows.Next() {
 			var name, imageUrl string
-			var id, price int
-			if err := rows.Scan(&id, &name, &price, &imageUrl); err != nil {
+			var product_id, price int
+			if err := rows.Scan(&product_id, &name, &price, &imageUrl); err != nil {
 				c.JSON(500, gin.H{"error": "fetch product scan error"})
 				return
 			}
 
 			// 拼接網址並存入陣列
 			products = append(products, gin.H{
-				"id":        id,
+				"product_id":        product_id,
 				"name":      name,
 				"price":     price,
 				"image_url": fmt.Sprintf("%s%s", imageBaseUrl, imageUrl),
@@ -150,37 +150,25 @@ func getCartProduct(r *gin.Engine, db *sql.DB) {
 			c.JSON(400, gin.H{"error": "Invalid request body"})
 			return
 		}
-
-
-
-
-
-		// 加上判斷式
-		// 判斷為加入購物車或是單純查看購物車
-		//存入cart_item資訊
-		// update 使用 user_id, product_id更新Quantity
-		if (req.Id != 0 && req.Quantity != 0){
-			rows, err := db.Query("SELECT * FROM cart_item WHERE user_id = ?", 1)
-			if err != nil{
-				c.JSON(500, gin.H{"error": "fetch cart_item info"})
+		// 若收到的不等於0表示
+		// 表user加入商品(req.Quantity, req.Id, 1) = (product_quantity, product_id, user_id)
+		//todo
+		if req.Id != 0 && req.Quantity != 0 {
+			result, err := db.Exec("UPDATE cart_item SET quantity = quantity + ? WHERE product_id = ? AND user_id = ?", req.Quantity, req.Id, 1)
+			if err != nil {
+				c.JSON(500, gin.H{"error": "failed to update cart_item"})
 				return
 			}
-			//因cart_item提出同一個user會有多個product_id
-			for rows.Next() {
-				rows.Scan(&user_id , &product_id , &quantity);
-				//依照每個user的cart_item
-				// 尋找加入購物車的product
-				//todo
-			// |-----------------------------------------|目前是update web回傳沒有加上原先的
-			// |-----------------------------------------|
-				_, err := db.Exec("UPDATE cart_item SET quantity = ? WHERE product_id = ? AND user_id = ?", quantity, product_id, user_id)
+			
+			rowsAffected, _ := result.RowsAffected()
+			
+			if rowsAffected == 0 {
+				_, err := db.Exec("INSERT INTO cart_item (user_id, product_id, quantity) VALUES (?, ?, ?)", 1, req.Id, req.Quantity)
 				if err != nil {
-					c.JSON(500, gin.H{"error": "failed to update cart_item"})
+					c.JSON(500, gin.H{"error": "新增至購物車失敗"})
 					return
 				}
 			}
-			
-
 		}
 
 		// 更新完Quantity or 單純查看，提出資料並傳給web
@@ -196,20 +184,21 @@ func getCartProduct(r *gin.Engine, db *sql.DB) {
 			rows.Scan(&user_id , &product_id , &quantity);
 			//依照每個user的cart_item
 			// 尋找加入購物車的product
-		var name, imageUrl string
-		var price int
-		err := db.QueryRow("SELECT name, price, image_url FROM product WHERE id = ?", product_id).Scan(&name, &price, &imageUrl)
-		if err != nil {
-			c.JSON(500, gin.H{"error": "fetch product info"})
-			return
-		}
+			var name, imageUrl string
+			var price int
+			err := db.QueryRow("SELECT name, price, image_url FROM product WHERE id = ?", product_id).Scan(&name, &price, &imageUrl)
+			if err != nil {
+				c.JSON(500, gin.H{"error": "fetch product info"})
+				return
+			}
 
-		productInfo = append(productInfo, gin.H{
-			"name":      name,
-			"price":     price,
-			"quantity":  quantity,
-			"image_url": fmt.Sprintf("%s%s", imageBaseUrl, imageUrl),
-		})
+			productInfo = append(productInfo, gin.H{
+				"product_id": product_id,
+				"name":      name,
+				"price":     price,
+				"quantity":  quantity,
+				"image_url": fmt.Sprintf("%s%s", imageBaseUrl, imageUrl),
+			})
 		}
 		c.JSON(200, productInfo)
 
@@ -236,8 +225,11 @@ func getCartProduct(r *gin.Engine, db *sql.DB) {
 			c.JSON(500, gin.H{"error":"fetch product info"})
 			return
 		}
+		if seller_id == 0{
+			c.JSON(400, gin.H{"error": "seller_id fetch error"})
+		}
 
-		row_seller := db.QueryRow("SELECT name, email FROM seller WHERE id = ?", seller_id)
+		row_seller := db.QueryRow("SELECT name, COALESCE(email, '') FROM seller WHERE id = ?", seller_id)
 		if err := row_seller.Scan(&seller_name, &seller_email);err != nil{
 			c.JSON(500, gin.H{"error":"fetch seller info"})
 			return
@@ -257,5 +249,17 @@ func getCartProduct(r *gin.Engine, db *sql.DB) {
 		c.JSON(200, productInfo)
 
 	})
+	r.POST("/cart_update",func(c *gin.Context){
+		var req productRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid request body"})
+			return
+		}
+		_, err := db.Exec("UPDATE cart_item SET quantity = ?  WHERE product_id = ? AND user_id = ?", req.Quantity, req.Id, 1)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "failed to update cart_item"})
+			return
+		}
 
+	})
 }
