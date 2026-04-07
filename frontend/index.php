@@ -7,9 +7,152 @@ $products = json_decode($json, true);
 <html>
 <head>
     <style>
-        .product-container { display: flex; flex-wrap: wrap; gap: 20px; }
-        .product-item { border: 1px solid #ddd; padding: 15px; border-radius: 8px; width: 220px; }
-        .product-item img { width: 100%; height: auto; border-radius: 4px; }
+        :root {
+  --bg: #F5F3EE;
+  --surface: #FFFFFF;
+  --border: #E0DDD6;
+  --text: #1C1A17;
+  --muted: #78746A;
+  --accent: #1C1A17;
+  --accent-fg: #F5F3EE;
+  --r: 10px;
+  --font: 'DM Sans', sans-serif;
+  --font-d: 'Noto Serif TC', serif;
+}
+
+/* 商品容器：使用 Grid 佈局 */
+.product-container {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 24px;
+  padding: 20px;
+}
+
+/* 單個商品卡片 */
+.product-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.product-item:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(0,0,0,0.05);
+}
+
+/* 標題與價格 */
+.product-item h3 {
+  font-family: var(--font-d);
+  font-size: 1.15rem;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+
+.product-item p {
+  font-size: 0.9rem;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+/* 圖片盒子固定比例 */
+.image-box {
+  width: 100%;
+  aspect-ratio: 1 / 1; /* 正方形 */
+  background: #fcfcfc;
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #f0f0f0;
+}
+
+.image-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* 確保圖片不變形且填滿 */
+  transition: opacity 0.2s;
+}
+
+.image-box img:hover {
+  opacity: 0.9;
+}
+
+/* 加入購物車區域 */
+.order-action {
+  margin-top: auto; /* 推到底部 */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.order-action label {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.order-action input[type="number"] {
+  width: 50px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font);
+  text-align: center;
+}
+
+.order-action button {
+  flex: 1;
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.order-action button:hover {
+  opacity: 0.85;
+}
+
+/* 底部連結按鈕 */
+.nav-links {
+  grid-column: 1 / -1;
+  text-align: center;
+  margin-top: 30px;
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+}
+
+.nav-links a {
+  text-decoration: none;
+  color: var(--muted);
+  font-size: 0.9rem;
+  border-bottom: 1px solid transparent;
+  transition: all 0.2s;
+}
+
+.nav-links a:hover {
+  color: var(--text);
+  border-bottom: 1px solid var(--text);
+}
+
+.no-image {
+  font-size: 0.8rem;
+  color: #ccc;
+}
     </style>
 </head>
 <body>
@@ -49,6 +192,7 @@ $products = json_decode($json, true);
             </div>
         <?php endforeach; ?>
         <a href="cart.php" >購物車</a>
+        <a href="order.php" >我的訂單</a>
     <?php else: ?>
         <div class="empty-msg">目前沒有任何商品。</div>
     <?php endif; ?>

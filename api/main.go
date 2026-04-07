@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gin-contrib/cors"
+	"net/http"
 )
 
 type LoginRequest struct {
@@ -19,6 +20,37 @@ type productRequest struct {
 	Quantity int `json:"quantity"`
 }
 
+// 定義模型
+type Product struct {
+	ID    uint    `gorm:"primaryKey"`
+	Name  string  `json:"name"`
+	Price float64 `json:"price"`
+	Stock int     `json:"stock"`
+}
+
+type Order struct {
+	ID         uint    `gorm:"primaryKey"`
+	UserID     int     `json:"user_id"`
+	TotalPrice float64 `json:"total_price"`
+	Status     string  `json:"status"`
+}
+
+type OrderItem struct {
+	ID              uint    `gorm:"primaryKey"`
+	OrderID         uint    `json:"order_id"`
+	ProductID       int     `json:"product_id"`
+	Quantity        int     `json:"quantity"`
+	PriceAtPurchase float64 `json:"price_at_purchase"`
+}
+
+// 接收前端 JSON 的結構
+type CheckoutRequest struct {
+	UserID int `json:"user_id"`
+	Items  []struct {
+		ProductID int `json:"product_id"`
+		Quantity  int `json:"quantity"`
+	} `json:"items"`
+}
 func main() {
 	//初始化
 	r := gin.Default()
@@ -27,7 +59,7 @@ func main() {
 	})
 	const (
 		User     = "root"
-		Password = ""
+		Password = "9151999"
 		Host     = "mysql-db" // container_name(server)
 		Port     = 3306
 		DBName   = "ShoppingCart" //MYSQL_DATABASE
@@ -53,7 +85,7 @@ func main() {
 	getProduct(r, db)
 
 	getCartProduct(r, db)
-
+	RegisterCheckoutRoutes(r, db)
 	r.Run(":8080")
 }
 
@@ -262,4 +294,107 @@ func getCartProduct(r *gin.Engine, db *sql.DB) {
 		}
 
 	})
+}
+
+// RegisterCheckoutRoutes 負責初始化路由與依賴注入
+func RegisterCheckoutRoutes(r *gin.Engine, db *sql.DB) {
+
+	// 定義路由，並將 db 傳入 Handler
+	r.POST("/checkout", func(c *gin.Context) {
+		CheckoutHandler(c, db)
+	})
+}
+// CheckoutHandler 使用原生的 *sql.DB
+func CheckoutHandler(c *gin.Context, db *sql.DB) {
+	var req CheckoutRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "格式錯誤"})
+		return
+	}
+
+	// 1. 開始事務 (原生回傳兩個值：Tx 和 error)
+	tx, err := db.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "無法啟動事務"})
+		return
+	}
+
+	// 確保發生錯誤時回滾
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// 2. 建立訂單主檔並取得自動生成的 ID
+	res, err := tx.Exec("INSERT INTO orders (user_id, total_price, status) VALUES (?, ?, ?)", 
+		req.UserID, 0, "pending")
+	if err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "建立訂單失敗"})
+		return
+	}
+	orderID, _ := res.LastInsertId()
+
+	var grandTotal float64 = 0
+
+	// 3. 處理每一項商品 (扣庫存 + 寫入明細)
+	for _, item := range req.Items {
+		var price float64
+		var stock int
+		var name string
+
+		// 查詢商品資訊 (加鎖 FOR UPDATE 防止併發衝突)
+		err := tx.QueryRow("SELECT name, price, stock FROM product WHERE id = ? FOR UPDATE", 
+			item.ProductID).Scan(&name, &price, &stock)
+		
+		if err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusNotFound, gin.H{"error": "找不到商品"})
+			return
+		}
+
+		// 檢查庫存
+		if stock < item.Quantity {
+			tx.Rollback()
+			c.JSON(http.StatusBadRequest, gin.H{"error": name + " 庫存不足"})
+			return
+		}
+
+		// 更新庫存
+		_, err = tx.Exec("UPDATE product SET stock = stock - ? WHERE id = ?", 
+			item.Quantity, item.ProductID)
+		if err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "更新庫存失敗"})
+			return
+		}
+
+		// 寫入明細
+		_, err = tx.Exec("INSERT INTO order_items (order_id, product_id, quantity, price_at_purchase) VALUES (?, ?, ?, ?)", 
+			orderID, item.ProductID, item.Quantity, price)
+		if err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "寫入明細失敗"})
+			return
+		}
+
+		grandTotal += price * float64(item.Quantity)
+	}
+
+	// 4. 更新訂單總金額
+	_, err = tx.Exec("UPDATE orders SET total_price = ? WHERE id = ?", grandTotal, orderID)
+	if err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新總價失敗"})
+		return
+	}
+
+	// 5. 提交事務
+	if err := tx.Commit(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "提交交易失敗"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "結帳成功", "order_id": orderID})
 }

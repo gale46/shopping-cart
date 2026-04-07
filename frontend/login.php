@@ -1,4 +1,5 @@
 <?php
+session_start();
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
 
@@ -32,8 +33,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     //將response存入cache讓下個頁面可以讀到
     $res = json_decode($response, true);
     if($res['message'] === "登入成功"){
-        session_start();
-        $_SESSION['iser_id'] = $res['id'];
+        
+        $_SESSION['user_id'] = $res['id'];
         header("Location:index.php");
     }
     echo "<div style='font-family: Arial, sans-serif; font-size: 20px; font-weight: bold;'>
@@ -51,118 +52,151 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         <title>登入</title>
     </head>
     <style>
-        /* 全局樣式 */
+        /* 直接引用你提供的 Style 變數與基礎設定 */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --bg: #F5F3EE;
+            --surface: #FFFFFF;
+            --border: #E0DDD6;
+            --text: #1C1A17;
+            --muted: #78746A;
+            --accent: #1C1A17;
+            --accent-fg: #F5F3EE;
+            --danger: #B83232;
+            --success: #1A7A4A;
+            --r: 10px;
+            --font: 'DM Sans', sans-serif;
+            --font-d: 'Noto Serif TC', serif;
+        }
+
         body {
-            font-family: Arial, sans-serif;
-            background-color: #1c1d26; /* 深灰背景色 */
-            color: #ffffff; /* 白色文字 */
-            margin: 0;
-            padding: 0;
+            font-family: var(--font);
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
             display: flex;
-            flex-direction: column;
             align-items: center;
-        }
-
-        /* 標題 */
-        h1, h2, h3 {
-            color: #e44c65; /* 紅色點綴 */
-        }
-
-        /* 表單樣式 */
-        form {
-            background-color: #272833; /* 深灰背景 */
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-            width: 300px;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-
-        form label {
-            font-size: 1rem;
-            margin-bottom: 5px;
-        }
-
-        form input[type="text"], 
-        form input[type="password"] {
-            padding: 10px;
-            border: none;
-            border-radius: 5px;
-            width: calc(100% - 20px);
-        }
-
-        form input[type="submit"] {
-            padding: 10px;
-            border: none;
-            border-radius: 5px;
-            background-color: #e44c65;
-            color: #ffffff;
-            font-weight: bold;
-            cursor: pointer;
-            transition: background-color 0.3s;
-        }
-
-        form input[type="submit"]:hover {
-            background-color: #c4374f;
-        }
-
-        /* 錯誤提示文字 */
-        form p {
-            color: #e44c65;
-            font-size: 0.9rem;
-            margin: 0;
-        }
-
-        nav {
-            margin-top: 20px;
-            background-color: #272833;
-            padding: 10px 0;
-            width: 100%;
-            text-align: center;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-        }
-
-        nav ul {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-            display: flex;
             justify-content: center;
-            gap: 15px;
+            padding: 1rem;
         }
 
-        nav ul li {
-            display: inline-block;
+        /* 登入容器 */
+        .login-wrap {
+            width: 100%;
+            max-width: 400px;
+            animation: fadeUp 0.22s ease both;
         }
 
-        nav ul li a {
-            color: #ffffff;
+        .page-head {
+            text-align: center;
+            margin-bottom: 1.75rem;
+        }
+        .page-head h1 { 
+            font-family: var(--font-d); 
+            font-size: 1.8rem; 
+            font-weight: 600; 
+            letter-spacing: -0.02em; 
+        }
+
+        .order-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--r);
+            padding: 2rem;
+            overflow: hidden;
+        }
+
+        /* 表單元素美化 */
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.82rem;
+            font-weight: 500;
+            color: var(--muted);
+            margin-bottom: 0.5rem;
+            letter-spacing: 0.05em;
+        }
+
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            padding: 12px 14px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-family: var(--font);
+            font-size: 0.95rem;
+            color: var(--text);
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"]:focus,
+        input[type="password"]:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        /* 按鈕美化 */
+        input[type="submit"] {
+            width: 100%;
+            padding: 14px;
+            background: var(--accent);
+            color: var(--accent-fg);
+            border: none;
+            border-radius: var(--r);
+            font-size: 0.95rem;
+            font-weight: 500;
+            font-family: var(--font);
+            cursor: pointer;
+            transition: opacity 0.15s;
+            margin-top: 0.5rem;
+        }
+
+        input[type="submit"]:hover {
+            opacity: 0.85;
+        }
+
+        /* 錯誤訊息風格 (引用 .b-out 色彩) */
+        .error-msg {
+            background: #FDE8E6;
+            color: var(--danger);
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 0.83rem;
+            margin-bottom: 1.25rem;
+            text-align: center;
+            border: 1px solid rgba(184, 50, 50, 0.1);
+        }
+
+        /* 底部導航 */
+        .login-nav {
+            margin-top: 1.5rem;
+            text-align: center;
+        }
+
+        .login-nav ul {
+            list-style: none;
+        }
+
+        .login-nav a {
+            font-size: 0.83rem;
+            color: var(--muted);
             text-decoration: none;
-            font-size: 1rem;
-            padding: 5px 10px;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            border-radius: 4px;
-            transition: background-color 0.3s, border-color 0.3s;
+            text-underline-offset: 3px;
+            transition: color 0.2s;
         }
 
-        nav ul li a:hover {
-            background-color: #e44c65;
-            border-color: #e44c65;
+        .login-nav a:hover {
+            color: var(--text);
+            text-decoration: underline;
         }
 
-       
-        @media (max-width: 480px) {
-            form {
-                width: 90%;
-            }
-
-            nav ul li a {
-                font-size: 0.8rem;
-            }
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(7px); }
+            to   { opacity: 1; transform: translateY(0); }
         }
-
     </style>
     <body>
         <form method="POST" action="">

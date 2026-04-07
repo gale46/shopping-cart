@@ -64,19 +64,20 @@ CREATE TABLE IF NOT EXISTS cart_item(
 insert into cart_item(user_id, product_id) value (1, 5);
 
 
-CREATE TABLE IF NOT EXISTS orders(
+
+CREATE TABLE orders (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id int NOT NULL,
-    total_price int,
-    product_status int,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP 
+    user_id INT NOT NULL,
+    total_price DECIMAL(10, 2) NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending', -- pending, paid, shipped
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS order_item(
+CREATE TABLE order_items (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    order_id int NOT NULL,
-    product_id int,
-    buy_price int,
-    quantity int,
+    order_id INT NOT NULL,
+    product_id INT NOT NULL,
+    quantity INT NOT NULL,
+    price_at_purchase DECIMAL(10, 2) NOT NULL,
     FOREIGN KEY (order_id) REFERENCES orders(id)
 );

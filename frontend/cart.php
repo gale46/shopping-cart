@@ -16,9 +16,9 @@ curl_close($ch);
 
 // 將 Go 傳回來的 JSON 轉成 PHP 陣列
 $res = json_decode($response, true);
-echo "<pre>"; 
-var_dump($res); // 查看參數
-echo "</pre>"; 
+// echo "<pre>"; 
+// var_dump($res); // 查看參數
+// echo "</pre>"; 
 ?>
 
 <!DOCTYPE html>
@@ -60,7 +60,11 @@ echo "</pre>";
                 
                 <div class="product-info">
                     <p><b>商品名稱：</b><?= htmlspecialchars($item['name']) ?></p>
-                    <p><b>價格：</b><span style="color:red;">$<?= number_format($item['price']) ?></span></p>
+                    <p>
+                        單價：$<span id="price_<?= $item['product_id'] ?>" data-raw-price="<?= $item['price'] ?>">
+                            <?= number_format($item['price']) ?>
+                        </span>
+                    </p>
                     <p>
                         <b>購買數量：</b>
                         <!--使用qty_+id作為input的id -->
@@ -74,11 +78,15 @@ echo "</pre>";
                             <!-- onchange->改變事件; onclick->點擊事件 -->
                             <!-- 利用JS fetch sql data -->
                     </p>
-                    
+                    <p>
+                        <h5 id="subtotal_<?= $item['product_id'] ?>">
+                            小計：$<?= number_format($item['price'] * $item['quantity']) ?>
+                        </h5>
+                    </p>
                 </div>
             </div>
         <?php endforeach; ?>    
-
+        
     <?php else: ?>
         <h2 class="error-title">解析失敗或購物車為空</h2>
         <p>後端回傳原始內容：</p>
@@ -88,7 +96,16 @@ echo "</pre>";
     <hr>
     <a href="index.php" class="btn-back">返回商品列表</a>
     <!-- todo -->
-    <a href="index.php" class="btn-back">結帳</a>
+    <form method="POST" action="/checkout.php">
+      <button
+        type="submit"
+        class="btn-checkout"
+        <?= empty($cart_items) ? 'disabled' : '' ?>
+        >
+
+        前往結帳
+      </button>
+    </form>
 </div>
 <script>
     async function updateCart(productId) {
@@ -98,7 +115,7 @@ echo "</pre>";
 
         // 測試列印
         console.log("商品 ID:", productId, "新數量:", newQuantity);
-
+        updatePrice(productId);
         // await 採用async在fetch的同時，可以處理別的畫面
         try{
             const response = await fetch('http://localhost:8080/cart_update', {
@@ -115,16 +132,19 @@ echo "</pre>";
         }
 
     }; 
-    function updateSubtotal(productId, price) {
-    const qtyInput = document.getElementById('qty_' + productId);
-    const subtotalElement = document.getElementById('subtotal_' + productId);
-    
-    const quantity = parseInt(qtyInput.value) || 0;
-    const total = price * quantity;
+    function updatePrice(productId) {
+        // 1. 拿取純數字 (不帶 $ 和 逗號)
+        const price = parseFloat(document.getElementById('price_' + productId).dataset.rawPrice);
 
-    // 更新畫面上的小計
-    subtotalElement.innerText = '$' + total.toLocaleString(); // toLocaleString 會加上千分位
-}
+        // 2. 拿取數量
+        const qty = parseInt(document.getElementById('qty_' + productId).value) || 0;
+
+        // 3. 計算
+        const total = price * qty;
+
+        // 4. 更新顯示 (這時候再把它格式化回人看的樣子)
+        document.getElementById('subtotal_' + productId).innerText = "小計：$" + total.toLocaleString();
+    }
 </script>
 </body>
 </html>
