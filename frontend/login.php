@@ -1,4 +1,13 @@
 <?php
+//使用cluster使用master、slave
+ini_set('session.save_handler', 'rediscluster');
+
+//php透過seed
+// 訪問redis data要訪哪
+// 由redis主導
+$path = 'seed[]=redis-1:6379&seed[]=redis-2:6379&seed[]=redis-3:6379&timeout=1&read_timeout=1';
+ini_set('session.save_path', $path);
+
 session_start();
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
 

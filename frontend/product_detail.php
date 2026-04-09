@@ -2,6 +2,17 @@
 
 
 <?php
+    ini_set('session.save_handler', 'rediscluster');
+    $path = 'seed[]=redis-1:6379&seed[]=redis-2:6379&seed[]=redis-3:6379&timeout=1&read_timeout=1';
+    ini_set('session.save_path', $path);
+
+    session_start();
+
+    if (isset($_SESSION['user_id'])) {
+        echo "登入的使用者 ID 是：" . $_SESSION['user_id'];
+    } else {
+        echo "尚未登入";
+    }
     error_reporting(E_ALL);
     ini_set('display_errors', 1);
 

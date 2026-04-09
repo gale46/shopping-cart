@@ -77,6 +77,7 @@ services:
       - "3000:80"
     networks:
       - app-net
+      - redis-net
     depends_on:
     - db
     - api
@@ -103,9 +104,9 @@ volumes:
   mysql-data:                # 定義一個具名的 volume
 
 networks:
-  redis-net:
+  app-net:
     driver: bridge
-  app-net:    
+  redis-net:
     driver: bridge
 
 

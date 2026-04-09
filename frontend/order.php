@@ -1,4 +1,15 @@
 <?php
+ini_set('session.save_handler', 'rediscluster');
+$path = 'seed[]=redis-1:6379&seed[]=redis-2:6379&seed[]=redis-3:6379&timeout=1&read_timeout=1';
+ini_set('session.save_path', $path);
+
+session_start();
+
+if (isset($_SESSION['user_id'])) {
+    echo "登入的使用者 ID 是：" . $_SESSION['user_id'];
+} else {
+    echo "尚未登入";
+}
 /**
  * order.php
  * 顯示當前登入使用者的訂單列表與明細
@@ -16,12 +27,7 @@ define('DB_USER', 'root');
 define('DB_PASS', '9151999');
 define('DB_PORT', '3306');
 define('IMAGE_BASE_URL', 'http://localhost:3000/uploads/product/');
-session_start();
 
-if (empty($_SESSION['user_id'])) {
-    header('Location: /login.php');
-    exit;
-}
 
 $user_id  = (int)$_SESSION['user_id'];
 $username = $_SESSION['username'] ?? 'User';

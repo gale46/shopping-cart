@@ -1,5 +1,24 @@
 <?php
+ini_set('session.save_handler', 'rediscluster');
+$path = 'seed[]=redis-1:6379&seed[]=redis-2:6379&seed[]=redis-3:6379&timeout=1&read_timeout=1';
+ini_set('session.save_path', $path);
+
+session_start();
+
+if (isset($_SESSION['user_id'])) {
+    echo "登入的使用者 ID 是：" . $_SESSION['user_id'];
+} else {
+    echo "尚未登入";
+}
+if (!isset($_SESSION['user_id'])) {
+    //報錯或跳轉
+    die(json_encode(["error" => "未登入"]));
+}
+
+$user_id = (int)$_SESSION['user_id'];
+
 $data = json_encode([
+    "user_id"    => $user_id,
     "product_id" => isset($_POST['product_id']) ? (int)$_POST['product_id'] : 0,
     "quantity" => isset($_POST['quantity']) ? (int)$_POST['quantity'] : 0
 ]);
@@ -74,7 +93,7 @@ $res = json_decode($response, true);
                             value="<?= (int)$item['quantity'] ?>" 
                             min="0"
                             oninput="if(this.value<0)this.value=0"
-                            onchange="updateCart(<?= $item['product_id']?>)">
+                            onchange="updateCart(<?= $user_id ?>, <?= $item['product_id'] ?>)">
                             <!-- onchange->改變事件; onclick->點擊事件 -->
                             <!-- 利用JS fetch sql data -->
                     </p>
@@ -100,7 +119,7 @@ $res = json_decode($response, true);
       <button
         type="submit"
         class="btn-checkout"
-        <?= empty($cart_items) ? 'disabled' : '' ?>
+        <?= empty($item) ? 'disabled' : '' ?>
         >
 
         前往結帳
@@ -108,7 +127,7 @@ $res = json_decode($response, true);
     </form>
 </div>
 <script>
-    async function updateCart(productId) {
+    async function updateCart(userId, productId) {
         // 透過 ID 抓取「目前」輸入框裡的最新數值
         const qtyInput = document.getElementById('qty_' + productId);
         const newQuantity = parseInt(qtyInput.value);
@@ -122,6 +141,7 @@ $res = json_decode($response, true);
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
+                    user_id: userId,
                     product_id: productId,
                     quantity: newQuantity
                 })

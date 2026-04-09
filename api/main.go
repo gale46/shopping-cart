@@ -4,10 +4,14 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+	"context"
 	"github.com/gin-gonic/gin"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gin-contrib/cors"
 	"net/http"
+	"github.com/redis/go-redis/v9"
+	"strconv"
+	"encoding/json"
 )
 
 type LoginRequest struct {
@@ -16,6 +20,7 @@ type LoginRequest struct {
 }
 
 type productRequest struct {
+	UserID int  `json:"user_id"`
 	Id int `json:"product_id"`
 	Quantity int `json:"quantity"`
 }
@@ -51,12 +56,17 @@ type CheckoutRequest struct {
 		Quantity  int `json:"quantity"`
 	} `json:"items"`
 }
+
+
+
 func main() {
-	//初始化
+	//初始化gin------------------------------------
 	r := gin.Default()
 	r.GET("/", func(c *gin.Context) {
 		c.String(200, "Hello from shopping-cart API")
 	})
+
+	// ini sql---------------------------------------
 	const (
 		User     = "root"
 		Password = "9151999"
@@ -78,19 +88,43 @@ func main() {
 	}
 
 	fmt.Println("MySQL 連線成功！")
+	// ini redis----------------------------------------
+
+	rdb := redis.NewClusterClient(&redis.ClusterOptions{
+		// 寫入三台 Master
+		Addrs: []string{
+			"redis-1:6379", 
+			"redis-2:6379", 
+			"redis-3:6379",
+		},
+		// 甚至可以開啟這個選項，讓 Go 在讀取資料時也會去問 Slave，減輕 Master 負擔
+		ReadOnly: true, 
+		RouteByLatency: true, 
+	})
+	ctx := context.Background()
+	err = rdb.Ping(ctx).Err()
+	if err != nil {
+		fmt.Println("Redis 連線失敗:", err)
+	} else {
+		fmt.Println("Redis Cluster 連線成功！")
+	}
+
+
+
 	r.Use(cors.Default())
-	login(r, db)
+	login(ctx, rdb, r, db)
 
 	//讀取商品資訊
-	getProduct(r, db)
-
-	getCartProduct(r, db)
-	RegisterCheckoutRoutes(r, db)
+	getProduct(ctx, rdb, r, db)
+	// 購物車中的資訊
+	getCartProduct(ctx, rdb, r, db)
+	// 結帳時資訊
+	RegisterCheckoutRoutes(ctx, rdb, r, db)
 	r.Run(":8080")
 }
 
 // php to go
-func login(r *gin.Engine, db *sql.DB) {
+func login(ctx context.Context,rdb *redis.ClusterClient, r *gin.Engine, db *sql.DB) {
 	//建立登入路由
 	r.POST("/login", func(c *gin.Context) {
 		var req LoginRequest
@@ -99,8 +133,9 @@ func login(r *gin.Engine, db *sql.DB) {
 			c.JSON(400, gin.H{"message": "請提供正確的登入資訊"})
 			return
 		}
+		
 		//對比撈出的username 和 pw
-		dbId, dbPassword := getUserInfo(req.Username, db)
+		dbId, dbPassword := getUserInfo(ctx, rdb, req.Username, db)
 
 		if req.Password == dbPassword && dbId != 0 {
 			c.JSON(200, gin.H{"message": "登入成功", "id": dbId})
@@ -113,10 +148,24 @@ func login(r *gin.Engine, db *sql.DB) {
 	})
 }
 
-func getUserInfo(Username string, db *sql.DB) (dbId int, dbPassword string) {
-
+func getUserInfo(ctx context.Context, rdb *redis.ClusterClient, Username string, db *sql.DB) (dbId int, dbPassword string) {
+	key := "user:" + Username
+	// 查詢是否有Username
+	res, err := rdb.HGetAll(ctx, key).Result()
+	if len(res) == 0{
+		fmt.Println("len = 0")
+	}
+	if err == nil && len(res) > 0{
+		// cache hit
+		id, _ := strconv.Atoi(res["id"])
+		fmt.Println("redis讀取成功")
+        return id, res["password"]
+	} else if err != redis.Nil {
+		// Redis 本身錯誤，降級直接查 DB（不中斷流程）
+		fmt.Printf("[warn] Redis GET %s 失敗: %v\n", key, err)
+	}
 	row := db.QueryRow("SELECT id, password FROM users WHERE username = ?", Username)
-	err := row.Scan(&dbId, &dbPassword)
+	err = row.Scan(&dbId, &dbPassword)
 
 	// 處理錯誤
 	if err == sql.ErrNoRows {
@@ -126,28 +175,52 @@ func getUserInfo(Username string, db *sql.DB) (dbId int, dbPassword string) {
 		fmt.Println("資料庫查詢錯誤:", err)
 		return 0, ""
 	}
+	err = rdb.HSet(ctx, key, map[string]interface{}{
+        "id":       dbId,
+        "password": dbPassword,
+    }).Err()
+	if err != nil {
+		fmt.Println("Redis 存入錯誤:", err)
+	} else {
+		// 設定過期時間，避免 Redis 爆掉
+		rdb.Expire(ctx, key, 30*time.Minute)
+	}
 
-	return dbId, dbPassword //查詢後的id + pw
+    return dbId, dbPassword
+
 
 }
 
 // go to php
-func getProduct(r *gin.Engine, db *sql.DB) {
+func getProduct(ctx context.Context,rdb *redis.ClusterClient, r *gin.Engine, db *sql.DB) {
 	// r.Static("網路路徑", "實體路徑")
 	r.Static("/uploads", "/home/ubuntu/shopping-cart/api/uploads")
+	// var products []gin.H // 建立一個存放多個商品的陣列
+	imageBaseUrl := "http://localhost:3000/uploads/product/"
+
 
 	r.GET("/products", func(c *gin.Context) {
-		// 前 10 筆
+		key := "products"
+		res, err := rdb.Get(ctx, key).Result()
+		if err == nil && len(res)>0{
+        // JSON 字串直接解碼回 Slice
+        	var products []map[string]interface{}
+			if err := json.Unmarshal([]byte(res), &products); err == nil {
+				fmt.Println("Redis Hit products")
+				c.JSON(200, products)
+				return
+			}
+    	}else{
+			fmt.Printf("[warn] Redis GET %s 失敗: %v\n", key, err)
+		}
+		// 前 10 筆 	
 		rows, err := db.Query("SELECT id, name, price, image_url FROM product LIMIT 10")
 		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
 		defer rows.Close()
-
-		var products []gin.H // 建立一個存放多個商品的陣列
-		imageBaseUrl := "http://localhost:3000/uploads/product/"
-
+		var products []map[string]interface{}
 		for rows.Next() {
 			var name, imageUrl string
 			var product_id, price int
@@ -164,29 +237,96 @@ func getProduct(r *gin.Engine, db *sql.DB) {
 				"image_url": fmt.Sprintf("%s%s", imageBaseUrl, imageUrl),
 			})
 		}
-
+		jsonData, _ := json.Marshal(products)
+    	rdb.Set(ctx, key, jsonData, 30*time.Minute)
 		// 直接回傳整個陣列
 		c.JSON(200, products)
 	})
+
+
+	r.POST("/product_detail", func(c *gin.Context) {
+		var req productRequest
+		var productInfo gin.H
+		var name, description, image_url, seller_name, seller_email string
+		var price, stock, seller_id int
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": "Invalid request body"})
+			return
+		}
+
+		if req.Id == 0 {
+			c.JSON(400, gin.H{"error": "request fail"})
+			return
+		}
+		key := "product_id:" + strconv.Itoa(req.Id)
+		res, err := rdb.Get(ctx, key).Result()
+		if err == nil && len(res) > 0{
+			if err:=json.Unmarshal([]byte(res), &productInfo); err == nil{
+				fmt.Println("redis hit product detail")
+				c.JSON(200, productInfo)
+				return
+			}
+
+		}
+
+
+		row := db.QueryRow("SELECT name, description, price, image_url, stock, seller_id FROM product WHERE id = ?", req.Id)
+		if err := row.Scan(&name, &description, &price, &image_url, &stock, &seller_id); err != nil{
+			c.JSON(500, gin.H{"error":"fetch product info"})
+			return
+		}
+		if seller_id == 0{
+			c.JSON(400, gin.H{"error": "seller_id fetch error"})
+		}
+
+		row_seller := db.QueryRow("SELECT name, COALESCE(email, '') FROM seller WHERE id = ?", seller_id)
+		if err := row_seller.Scan(&seller_name, &seller_email);err != nil{
+			c.JSON(500, gin.H{"error":"fetch seller info"})
+			return
+		}
+
+
+		productInfo = gin.H{	
+			"name":        name,
+			"price":       price,
+			"stock":       stock,
+			"image_url": 	fmt.Sprintf("%s%s", imageBaseUrl, image_url),
+			"description": description,
+			"seller_name":  seller_name,
+			"seller_email": seller_email,
+		}
+
+		jsonData, _ := json.Marshal(productInfo)
+		rdb.Set(ctx, key, jsonData, 30*time.Minute)
+		c.JSON(200, productInfo)
+
+	})
 }
 
-func getCartProduct(r *gin.Engine, db *sql.DB) {
+// func cartUpdateSyn(ctx context.Context,rdb *redis.ClusterClient, db *sql.DB){
+// 	go func(){
+// 		// step3從queue pop做sql
+// 		// step4update sql的data
+// 		res, err := rdb.BRPop(ctx, 0, "sync_to_db_queue").Result()
+		
+// 	}
+// }
+func getCartProduct(ctx context.Context,rdb *redis.ClusterClient, r *gin.Engine, db *sql.DB) {
+	
 	r.POST("/cart", func(c *gin.Context) {
 		var req productRequest
 		var productInfo []gin.H
 		imageBaseUrl := "http://localhost:3000/uploads/product/"
-
 		var user_id , product_id , quantity int
 		
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, gin.H{"error": "Invalid request body"})
 			return
 		}
-		// 若收到的不等於0表示
-		// 表user加入商品(req.Quantity, req.Id, 1) = (product_quantity, product_id, user_id)
-		//todo
-		if req.Id != 0 && req.Quantity != 0 {
-			result, err := db.Exec("UPDATE cart_item SET quantity = quantity + ? WHERE product_id = ? AND user_id = ?", req.Quantity, req.Id, 1)
+		// 若收到的不等於0表示新增 商品數量
+		// 需要把新增數量加上購物車原有的數量
+		if req.Id != 0 && req.Quantity != 0 {	
+			result, err := db.Exec("UPDATE cart_item SET quantity = quantity + ? WHERE product_id = ? AND user_id = ?", req.Quantity, req.Id, req.UserID)
 			if err != nil {
 				c.JSON(500, gin.H{"error": "failed to update cart_item"})
 				return
@@ -195,7 +335,8 @@ func getCartProduct(r *gin.Engine, db *sql.DB) {
 			rowsAffected, _ := result.RowsAffected()
 			
 			if rowsAffected == 0 {
-				_, err := db.Exec("INSERT INTO cart_item (user_id, product_id, quantity) VALUES (?, ?, ?)", 1, req.Id, req.Quantity)
+			
+				_, err := db.Exec("INSERT INTO cart_item (user_id, product_id, quantity) VALUES (?, ?, ?)", req.UserID, req.Id, req.Quantity)
 				if err != nil {
 					c.JSON(500, gin.H{"error": "新增至購物車失敗"})
 					return
@@ -204,8 +345,8 @@ func getCartProduct(r *gin.Engine, db *sql.DB) {
 		}
 
 		// 更新完Quantity or 單純查看，提出資料並傳給web
-		// 預設user = 1
-		rows, err := db.Query("SELECT user_id , product_id , quantity FROM cart_item WHERE user_id = ?", 1)
+	
+		rows, err := db.Query("SELECT user_id , product_id , quantity FROM cart_item WHERE user_id = ?", req.UserID)
 		if err != nil{
 			c.JSON(500, gin.H{"error": "fetch cart_item info"})
 			return
@@ -238,56 +379,15 @@ func getCartProduct(r *gin.Engine, db *sql.DB) {
 
 
 
-	r.POST("/product_detail", func(c *gin.Context) {
-		var req productRequest
-		var productInfo gin.H
-		var name, description, image_url, seller_name, seller_email string
-		var price, stock, seller_id int
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, gin.H{"error": "Invalid request body"})
-			return
-		}
-
-		if req.Id == 0 {
-			c.JSON(400, gin.H{"error": "request fail"})
-			return
-		}
-		row := db.QueryRow("SELECT name, description, price, image_url, stock, seller_id FROM product WHERE id = ?", req.Id)
-		if err := row.Scan(&name, &description, &price, &image_url, &stock, &seller_id); err != nil{
-			c.JSON(500, gin.H{"error":"fetch product info"})
-			return
-		}
-		if seller_id == 0{
-			c.JSON(400, gin.H{"error": "seller_id fetch error"})
-		}
-
-		row_seller := db.QueryRow("SELECT name, COALESCE(email, '') FROM seller WHERE id = ?", seller_id)
-		if err := row_seller.Scan(&seller_name, &seller_email);err != nil{
-			c.JSON(500, gin.H{"error":"fetch seller info"})
-			return
-		}
-
-		imageBaseUrl := "http://localhost:3000/uploads/product/"
-
-		productInfo = gin.H{	
-			"name":        name,
-			"price":       price,
-			"stock":       stock,
-			"image_url": 	fmt.Sprintf("%s%s", imageBaseUrl, image_url),
-			"description": description,
-			"seller_name":  seller_name,
-			"seller_email": seller_email,
-		}
-		c.JSON(200, productInfo)
-
-	})
+	// // 在購物車中調整數量
 	r.POST("/cart_update",func(c *gin.Context){
 		var req productRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, gin.H{"error": "Invalid request body"})
 			return
 		}
-		_, err := db.Exec("UPDATE cart_item SET quantity = ?  WHERE product_id = ? AND user_id = ?", req.Quantity, req.Id, 1)
+
+		_, err := db.Exec("UPDATE cart_item SET quantity = ?  WHERE product_id = ? AND user_id = ?", req.Quantity, req.Id, req.UserID)
 		if err != nil {
 			c.JSON(500, gin.H{"error": "failed to update cart_item"})
 			return
@@ -297,15 +397,15 @@ func getCartProduct(r *gin.Engine, db *sql.DB) {
 }
 
 // RegisterCheckoutRoutes 負責初始化路由與依賴注入
-func RegisterCheckoutRoutes(r *gin.Engine, db *sql.DB) {
+func RegisterCheckoutRoutes(ctx context.Context,rdb *redis.ClusterClient, r *gin.Engine, db *sql.DB) {
 
 	// 定義路由，並將 db 傳入 Handler
 	r.POST("/checkout", func(c *gin.Context) {
-		CheckoutHandler(c, db)
+		CheckoutHandler(ctx, rdb, c, db)
 	})
 }
 // CheckoutHandler 使用原生的 *sql.DB
-func CheckoutHandler(c *gin.Context, db *sql.DB) {
+func CheckoutHandler(ctx context.Context,rdb *redis.ClusterClient, c *gin.Context, db *sql.DB) {
 	var req CheckoutRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "格式錯誤"})
