@@ -1,12 +1,7 @@
 <?php
-//使用cluster使用master、slave
-ini_set('session.save_handler', 'rediscluster');
-
-//php透過seed
-// 訪問redis data要訪哪
-// 由redis主導
-$path = 'seed[]=redis-1:6379&seed[]=redis-2:6379&seed[]=redis-3:6379&timeout=1&read_timeout=1';
-ini_set('session.save_path', $path);
+// 改用單機 redis-session，不走 Cluster
+ini_set('session.save_handler', 'redis');
+ini_set('session.save_path', 'tcp://redis-session:6379');
 
 session_start();
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
@@ -44,6 +39,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if($res['message'] === "登入成功"){
         
         $_SESSION['user_id'] = $res['id'];
+        $_SESSION['username'] = $res['username'];
+        $_SESSION['role'] = $res['role'];
         header("Location:index.php");
     }
     echo "<div style='font-family: Arial, sans-serif; font-size: 20px; font-weight: bold;'>

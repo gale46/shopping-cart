@@ -32,9 +32,13 @@ CREATE TABLE IF NOT EXISTS product(
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP NULL
 );
-insert into product(name, price,seller_id) value("apple", 50, 1);
+insert into product(name, price,seller_id, image_url, stock) value("banana", 50, 1, "banana.jpg", 50);
 DELETE FROM seller WHERE id = 1;
 
+
+-- UPDATE product
+-- SET stock = 50
+-- WHERE id = 1;
 
 CREATE TABLE IF NOT EXISTS seller(
 	id INT AUTO_INCREMENT PRIMARY KEY,

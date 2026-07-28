@@ -1,55 +1,38 @@
-
-
-
 <?php
-    ini_set('session.save_handler', 'rediscluster');
-    $path = 'seed[]=redis-1:6379&seed[]=redis-2:6379&seed[]=redis-3:6379&timeout=1&read_timeout=1';
-    ini_set('session.save_path', $path);
+ini_set('session.save_handler', 'redis');
+ini_set('session.save_path', 'tcp://redis-session:6379');
+session_start();
 
-    session_start();
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-    if (isset($_SESSION['user_id'])) {
-        echo "登入的使用者 ID 是：" . $_SESSION['user_id'];
-    } else {
-        echo "尚未登入";
-    }
-    error_reporting(E_ALL);
-    ini_set('display_errors', 1);
+// 取得 product_id
+$product_id = (int)($_GET['product_id'] ?? 0);
+if ($product_id === 0) {
+    die('缺少 product_id');
+}
 
-    echo "DEBUG: 開始執行<br>";
-    var_dump($_POST); // 看看表單傳了什麼
-    $addToCart = "http://api:8080/product_detail"; 
-    //需定義type以免傳到go後錯誤
-    $data = json_encode([
-        "product_id" => (int)$_GET['product_id'] ?? 0
-    ]);
-    $ch = curl_init($addToCart);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    $response = curl_exec($ch);
-    curl_close($ch);
-    echo "這是 Go 傳回來的原始文字：[" . $response . "]";
-    // 1. 先把文字變成 PHP 陣列
-   $res = json_decode($response, true);
-    // |-----------------------------------------|
-    // |-----------------------------------------|
-    // 加入由cart_item提出的quantity
-    // 只要 $res 不是 null 且有 name 這個 key，就代表成功了
-    if ($res != null) {
-        echo '<img src="' . $res['image_url'] . '"/><br>';
-        echo "商品名稱：" . $res['name'] . "<br>";
-        echo "價格：" . $res['price'] . "<br>";
-        echo "庫存：" . $res['stock'] . "<br>";
-        echo "描述：" . $res['description'] . "<br>";
-        echo "賣家資訊：" . $res['seller_name'] . "<br>". $res['seller_email'] . "<br>";
-        
-    } else {
-        echo "解析失敗，回傳內容為：";
-        var_dump($res);
-    }
-    
+// 打 Go API
+$ch = curl_init('http://api:8080/product_detail');
+curl_setopt_array($ch, [
+    CURLOPT_POST           => true,
+    CURLOPT_POSTFIELDS     => json_encode(['product_id' => $product_id]),
+    CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+    CURLOPT_RETURNTRANSFER => true,
+]);
+$response  = curl_exec($ch);
+$http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
 
+$res = json_decode($response, true);
+
+if ($http_code !== 200 || isset($res['error'])) {
+    die('商品讀取失敗：' . ($res['error'] ?? '未知錯誤'));
+}
 ?>
-
+<img src="<?= htmlspecialchars($res['image_url']) ?>"><br>
+<p>商品名稱：<?= htmlspecialchars($res['name']) ?></p>
+<p>價格：<?= $res['price'] ?></p>
+<p>庫存：<?= $res['stock'] ?></p>
+<p>描述：<?= htmlspecialchars($res['description']) ?></p>
+<p>賣家：<?= htmlspecialchars($res['seller_name']) ?> / <?= htmlspecialchars($res['seller_email']) ?></p>

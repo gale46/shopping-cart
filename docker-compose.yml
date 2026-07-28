@@ -1,15 +1,14 @@
 version: "3.8"
 services:
+
+  # ── Redis Cluster（給 Go API 用：購物車 / 商品 cache）────────────
+
   # Master 1
   redis-1:
     image: redis:8.0
     container_name: redis-1
     ports: ["6371:6379", "16371:16379"]
     command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --appendonly yes
-    #cluster -enablez分配slot
-    #config紀錄node master,slave
-    #timeout 5000超過時間，認定為損壞開始轉移資料
-    #AOF (Append Only File) redis 操作的logfile
     networks: [redis-net]
 
   # Master 2
@@ -51,57 +50,88 @@ services:
     ports: ["6376:6379", "16376:16379"]
     command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --appendonly yes
     networks: [redis-net]
-  
+
+  # ── Redis Cluster 初始化（只跑一次，分配 slot）────────────────────
+  redis-init:
+    image: redis:8.0
+    container_name: redis-init
+    depends_on:
+      - redis-1
+      - redis-2
+      - redis-3
+      - redis-4
+      - redis-5
+      - redis-6
+    networks: [redis-net]
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        for host in redis-1 redis-2 redis-3 redis-4 redis-5 redis-6; do
+          until redis-cli -h $$host ping | grep -q PONG; do
+            echo "等待 $$host..."
+            sleep 1
+          done
+          echo "$$host 就緒"
+        done
+        redis-cli --cluster create redis-1:6379 redis-2:6379 redis-3:6379 redis-4:6379 redis-5:6379 redis-6:6379 --cluster-replicas 1 --cluster-yes
+    restart: "no"
+
+  # ── Redis Session（給 PHP frontend 用：存 session）───────────────
+  # 單機 Redis，穩定不出錯
+  # PHP session 不走 Cluster，避免 RedisClusterException
+  redis-session:
+    image: redis:8.0
+    container_name: redis-session
+    ports: ["6370:6379"]
+    command: redis-server --appendonly yes
+    networks:
+      - app-net   # 只需要跟 frontend 同網路
+
+  # ── Go API ───────────────────────────────────────────────────────
   api:
-      build: ./api
-      networks:
-        - app-net      # 與前端通訊
-        - redis-net    # 與 Redis 集群通訊
-      depends_on:
-        - redis-1      # 這裡要指定具體的服務名，不能只寫 redis
-        - redis-2
-        - redis-3
-        - db
-      ports:
-        - "8080:8080"
-      container_name: "api"
-      
+    build: ./api
+    container_name: api
+    networks:
+      - app-net     # 與 frontend 通訊
+      - redis-net   # 與 Redis Cluster 通訊
+    depends_on:
+      - redis-init  # 確保 cluster 初始化完才啟動
+      - db
+    ports:
+      - "8080:8080"
 
-
-
+  # ── PHP Frontend ─────────────────────────────────────────────────
   frontend:
     build: ./frontend
+    container_name: frontend
     volumes:
       - ./api/uploads:/var/www/html/uploads
     ports:
       - "3000:80"
     networks:
-      - app-net
-      - redis-net
+      - app-net     # 與 api / db / redis-session 通訊
     depends_on:
-    - db
-    - api
+      - db
+      - api
+      - redis-session
 
-
-
-
-
+  # ── MySQL ────────────────────────────────────────────────────────
   db:
-    image: mysql:8.0         # 這裡要跟你原本 pull 的版本一致
-    container_name: mysql-db  # 這是 Compose 建立的新名字
+    image: mysql:8.0
+    container_name: mysql-db
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: 9151999  # 填入你原本設的密碼
-      MYSQL_DATABASE: ShoppingCart        # 你原本用的資料庫
+      MYSQL_ROOT_PASSWORD: 9151999
+      MYSQL_DATABASE: ShoppingCart
     ports:
       - "3306:3306"
     networks:
       - app-net
     volumes:
-      - mysql-data:/var/lib/mysql        # 讓資料持久化
+      - mysql-data:/var/lib/mysql
 
 volumes:
-  mysql-data:                # 定義一個具名的 volume
+  mysql-data:
 
 networks:
   app-net:
@@ -109,11 +139,7 @@ networks:
   redis-net:
     driver: bridge
 
-
-
-
-#redis互相溝通方式，只能透過port mapping 才能進，確保database 安全性
-
-
-
-
+# ── 網路職責說明 ────────────────────────────────────────────────────
+# app-net:   frontend ↔ api ↔ db ↔ redis-session
+# redis-net: api ↔ redis-1/2/3/4/5/6（Cluster）
+# frontend 不進 redis-net，避免直接碰 Cluster 造成錯誤
