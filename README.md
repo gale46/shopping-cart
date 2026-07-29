@@ -1,7 +1,2 @@
-shopping-cart/
-├── api/
-│   ├── main.go          # Gin REST API
-│   └── cart/
-├── docker-compose.yml   # Redis Cluster 3 nodes
-├── Makefile             # make up/down
-└── README.md            # 架構圖 + Demo 影片
+<img width="945" height="1334" alt="購物車" src="https://github.com/user-attachments/assets/e1081a6b-d20b-4513-ad55-465f0342fe3c" />
+
