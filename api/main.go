@@ -139,17 +139,16 @@ func login(ctx context.Context, rdb *redis.ClusterClient, r *gin.Engine, db *sql
         return
     }
 
-    // ← 多接一個 sellerName
     dbId, dbPassword, role, sellerID, sellerName := getUserInfo(ctx, rdb, req.Username, db)
-
-    if req.Password == dbPassword && dbId != 0 {
+	// if req.Password == dbPassword && dbId != 0 {
+    if (validateLogin(req.Password, dbPassword, dbId)){
         c.JSON(200, gin.H{
             "message":     "登入成功",
             "id":          dbId,
             "username":    req.Username,
             "role":        role,
             "seller_id":   sellerID,
-            "seller_name": sellerName, // ← 店鋪名稱
+            "seller_name": sellerName, 
         })
     } else {
         c.JSON(200, gin.H{"message": "登入失敗"})
@@ -409,14 +408,14 @@ func RegisterCheckoutRoutes(ctx context.Context, rdb *redis.ClusterClient, r *gi
 				c.JSON(http.StatusNotFound, gin.H{"error": "找不到商品"})
 				return
 			}
-			if stock < item.Quantity {
+			if !checkStock(stock, item.Quantity) {
 				tx.Rollback()
 				c.JSON(http.StatusBadRequest, gin.H{"error": name + " 庫存不足"})
 				return
 			}
 			tx.Exec("UPDATE product SET stock = stock - ? WHERE id = ?", item.Quantity, item.ProductID)
 			tx.Exec("INSERT INTO order_items (order_id, product_id, quantity, price_at_purchase) VALUES (?, ?, ?, ?)", orderID, item.ProductID, item.Quantity, price)
-			grandTotal += price * float64(item.Quantity)
+			grandTotal += calculateTotal(price, item.Quantity)
 			changedProductIDs = append(changedProductIDs, item.ProductID)
 		}
 
@@ -726,4 +725,14 @@ func registerSellerRoutes(ctx context.Context, rdb *redis.ClusterClient, r *gin.
 		}
 		c.JSON(http.StatusOK, gin.H{"message": "已更新為已出貨"})
 	})
+}
+
+func checkStock(stock int,  quantity int)bool{
+	return stock >= quantity
+}
+func calculateTotal(price float64, quantity int) float64 {
+    return price * float64(quantity)
+}
+func validateLogin(inputPassword string, dbPassword string, dbId int)bool{
+	return inputPassword == dbPassword && dbId != 0
 }
