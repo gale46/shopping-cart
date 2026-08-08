@@ -7,7 +7,7 @@ session_start();
 if (isset($_SESSION['user_id'])) {
     echo "登入的使用者 ID 是：" . $_SESSION['user_id'];
 } else {
-    echo "尚未登入";
+    header('Location: /login.php');
 }
 /**
  * order.php

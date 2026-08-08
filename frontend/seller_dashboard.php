@@ -8,7 +8,8 @@ if (empty($_SESSION['user_id']) || ($_SESSION['role'] ?? 0) != 1) {
     exit;
 }
 
-$seller_id = (int)$_SESSION['seller_id'];
+
+$seller_id = $_SESSION['seller_id'];
 $username  = $_SESSION['username'] ?? 'Seller';
 
 // 撈統計數字
@@ -135,12 +136,12 @@ body { font-family:var(--font); background:var(--bg); color:var(--text); min-hei
       <div class="menu-arrow">前往 →</div>
     </a>
 
-    <a class="menu-card" href="/seller_products.php?edit=1">
+    <!-- <a class="menu-card" href="/seller_products.php?edit=1">
       <div class="menu-icon">✏️</div>
       <div class="menu-title">編輯商品</div>
       <div class="menu-desc">修改商品資訊、價格與庫存</div>
       <div class="menu-arrow">前往 →</div>
-    </a>
+    </a> -->
 
   </div>
 </div>

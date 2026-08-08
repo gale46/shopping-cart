@@ -8,11 +8,7 @@ session_start();
 if (isset($_SESSION['user_id'])) {
     echo "登入的使用者 ID 是：" . $_SESSION['user_id'];
 } else {
-    echo "尚未登入";
-}
-if (!isset($_SESSION['user_id'])) {
-    //報錯或跳轉
-    die(json_encode(["error" => "未登入"]));
+    header('Location: /login.php');
 }
 
 $user_id = (int)$_SESSION['user_id'];

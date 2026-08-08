@@ -359,6 +359,11 @@ body {
 
 <script>
 async function addToCart(productId) {
+  <?php if (!$user_id): ?>
+    alert('請先登入才能加入購物車');
+    window.location.href = '/login.php';
+    return;
+  <?php endif; ?>
   const qtyInput = document.getElementById('qty_' + productId);
   const quantity = parseInt(qtyInput.value) || 1;
 

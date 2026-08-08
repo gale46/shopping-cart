@@ -41,6 +41,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $_SESSION['user_id'] = $res['id'];
         $_SESSION['username'] = $res['username'];
         $_SESSION['role'] = $res['role'];
+        $_SESSION['seller_id'] = $res['seller_id'];
         header("Location:index.php");
     }
     echo "<div style='font-family: Arial, sans-serif; font-size: 20px; font-weight: bold;'>
